@@ -1,40 +1,78 @@
-import org.apache.spark.sql.functions.{col, lit}
-import org.apache.spark.sql.{DataFrame, SparkSession}
+import org.apache.spark.sql.functions.{col, date_add, lit, to_date, _}
+import org.apache.spark.sql.{Column, DataFrame, Dataset, Row, SparkSession}
 import org.apache.spark.sql.types.{DoubleType, StructField, StructType, TimestampType}
 
+
 class Loader {
-   def readCurrencyData(fileName: String, sparkSession: SparkSession): DataFrame = {
-    //custom scehma for datetime parse
-    val customSchema:StructType = StructType(Array(
-      StructField("datetime", TimestampType, nullable = true),
-      StructField("open", DoubleType, nullable = true),
-      StructField("high", DoubleType, nullable = true),
-      StructField("low", DoubleType, nullable = true),
-      StructField("close", DoubleType, nullable = true),
-      StructField("vol1", DoubleType, nullable = true),
-      StructField("vol2", DoubleType, nullable = true)))
 
-     val colList: List[String] = List("datetime", "close")
-     val df: DataFrame = sparkSession.read
-      .option("header", value = true)
-      .option("delimiter", ",")
-      .option("timestampFormat", "yyyy.MM.dd HH:mm")
-      .schema(customSchema)
-      .csv(fileName)
-      .drop("vol1")
-      .drop("vol2")
-      .filter(col("datetime") > lit("2023-01-25 00:00:00").cast("timestamp"))
-      .select(colList.map(m => col(m)): _*)
+  /**
+   *
+   *
+   * @param dailyDate - daily date to select 24 hour period yyyy.MM.dd HH:mm"
+   * @param path      - path to csv file
+   * @param symbol    - symbol of currency
+   * @param spark     - spark session
+   * @param series    - column from file open, high,low,close
+   * @return          - formated Dataframe
+   */
 
+   private def loadCurrencyData(dailyDate:String,path:String,symbol:String,series:String,spark:SparkSession): Dataset[Row] ={
 
-    //add filename prefix to col names
-    val renamedColumns:Array[String] = df.columns.map(c => fileName.split("[.]")(0) + df(c))
-    renamedColumns(0) = "datetime" // set index column to datetime
-    df.toDF(renamedColumns: _*)
+     val customSchema: StructType = StructType(Array(
+       StructField("datetime", TimestampType, nullable = true),
+       StructField("open", DoubleType, nullable = true),
+       StructField("high", DoubleType, nullable = true),
+       StructField("low", DoubleType, nullable = true),
+       StructField("close", DoubleType, nullable = true),
+       StructField("vol1", DoubleType, nullable = true),
+       StructField("vol2", DoubleType, nullable = true)))
 
+     //val date: Column = lit(dailyDate)
 
+     val colList: List[String] = List("datetime", series)
+     val df : Dataset[Row] =  spark.read
+                                   .option("header", value = true)
+                                   .option("delimiter", ",")
+                                   .option("timestampFormat", "yyyy.MM.dd HH:mm")
+                                   .schema(customSchema)
+                                   .csv(path)
+                                   .drop("vol1")
+                                   .drop("vol2")
+                                   .filter(col("datetime") > lit(dailyDate) && col("datetime") < date_add(lit(dailyDate),1))    // select only one day
+                                   .select(colList.map(m => col(m)): _*)
+
+     val renamedColumns: Array[String] = df.columns.map(c => symbol + df(c))
+     renamedColumns(0) = "datetime" // set index column to datetime
+     df.toDF(renamedColumns: _*)
 
   }
+
+  /**
+   *
+   * @param dailyDate - daily date to select 24 hour period yyyy.MM.dd HH:mm"
+   * @param firstCurrencyDataSetPath - path to filename
+   * @param firstCurrencySymbol   - currency symbol
+   * @param secoundCurrencyDataSetPath - path to csv file
+   * @param secoundCurrencySymbol - currensy symbol
+   * @param crossCurrencyDataPath - syntetic caculated cross currency exchange rate
+   * @param crossCurrencySymbol   - cross currency symbol
+   * @param series                - series open,high,low or close
+   * @param sparkSession          - spark session
+   * @return
+   */
+   def readCurrencyData(dailyDate:String,series:String,
+                        firstCurrencyDataSetPath:String,firstCurrencySymbol:String,
+                        secoundCurrencyDataSetPath:String,secoundCurrencySymbol:String,
+                        crossCurrencyDataPath:String,crossCurrencySymbol:String,
+                        sparkSession: SparkSession): DataFrame = {
+     val firstCurrencyDF  : Dataset[Row] = loadCurrencyData(dailyDate, firstCurrencyDataSetPath,firstCurrencySymbol,   series, sparkSession)
+     val secondCurrencyDF : Dataset[Row] = loadCurrencyData(dailyDate,secoundCurrencyDataSetPath,secoundCurrencySymbol,series, sparkSession)
+     val crossCurrencyDF  : Dataset[Row] = loadCurrencyData(dailyDate,crossCurrencyDataPath,crossCurrencySymbol,       series, sparkSession)
+
+        //add filename prefix to col names
+     crossCurrencyDF.join(firstCurrencyDF,  Seq("datetime"), joinType = "left")
+                      .join(secondCurrencyDF, Seq("datetime"), joinType = "left")
+    }
 
 
 }
