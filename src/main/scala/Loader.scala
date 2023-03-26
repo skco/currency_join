@@ -71,7 +71,7 @@ class Loader {
 
         //add filename prefix to col names
      crossCurrencyDF.join(firstCurrencyDF,  Seq("datetime"), joinType = "left")
-                      .join(secondCurrencyDF, Seq("datetime"), joinType = "left")
+                    .join(secondCurrencyDF, Seq("datetime"), joinType = "left")
     }
 
 
