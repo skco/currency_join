@@ -30,7 +30,7 @@ class Loader {
      //val date: Column = lit(dailyDate)
 
      val colList: List[String] = List("datetime", series)
-     val df : Dataset[Row] =  spark.read
+     val DF : Dataset[Row] =  spark.read
                                    .option("header", value = true)
                                    .option("delimiter", ",")
                                    .option("timestampFormat", "yyyy.MM.dd HH:mm")
@@ -41,9 +41,9 @@ class Loader {
                                    .filter(col("datetime") > lit(dailyDate) && col("datetime") < date_add(lit(dailyDate),1))    // select only one day
                                    .select(colList.map(m => col(m)): _*)
 
-     val renamedColumns: Array[String] = df.columns.map(c => symbol + df(c))
+     val renamedColumns: Array[String] = DF.columns.map(c => symbol + DF(c))
      renamedColumns(0) = "datetime" // set index column to datetime
-     df.toDF(renamedColumns: _*)
+     DF.toDF(renamedColumns: _*)
 
   }
 
